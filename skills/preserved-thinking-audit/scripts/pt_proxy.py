@@ -27,6 +27,7 @@ import http.client
 import json
 import os
 import re
+import shlex
 import signal
 import ssl
 import sys
@@ -48,8 +49,9 @@ class Auth:
     """Upstream credential source. `env` reads the real API key from the proxy's environment;
     `passthrough` forwards whatever the harness sent."""
 
-    def __init__(self, kind: str, key_fd: int | None = None) -> None:
+    def __init__(self, kind: str, key_fd: int | None = None, scheme: str = "x-api-key") -> None:
         self.kind = kind
+        self.scheme = scheme
         self._key: str | None = None
         if kind == "passthrough":
             return
@@ -67,14 +69,14 @@ class Auth:
         if self.kind == "passthrough":
             return None
         if self._key:
-            return {"x-api-key": self._key}
+            return {"authorization": f"Bearer {self._key}"} if self.scheme == "bearer" else {"x-api-key": self._key}
         raise SystemExit("--auth env needs the real key: PT_UPSTREAM_API_KEY or ANTHROPIC_API_KEY in the proxy's environment, or --key-fd")
 
 
 class State:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.auth = Auth(args.auth, args.key_fd)
+        self.auth = Auth(args.auth, args.key_fd, args.auth_scheme)
         self.seq = 0
         self.inflight = 0
         self.lock = threading.Lock()
@@ -373,6 +375,8 @@ class Handler(BaseHTTPRequestHandler):
             out_headers.pop("x-api-key", None)
             out_headers.pop("authorization", None)
             out_headers.update(auth)
+        if state.args.extra_beta:
+            betas = [*state.args.extra_beta, *betas]
         if betas:
             out_headers["anthropic-beta"] = merge_betas(out_headers.get("anthropic-beta"), betas)
         out_headers.setdefault("anthropic-version", "2023-06-01")
@@ -496,6 +500,23 @@ class Handler(BaseHTTPRequestHandler):
         print(f"[pt] #{row['seq']} {row.get('status')} {row.get('path')}{note}", file=sys.stderr, flush=True)
 
 
+# Flags PT_PROXY_ARGS may carry. Environment is a weaker boundary than the command line: a project's .envrc or a
+# CI config can set it. So it may only shape how the credential is presented, never where it goes or who can
+# reach the proxy (--upstream, --bind, --insecure-bind, --allow-any-path, --key-fd, --auth stay argv-only).
+ENV_ARG_FLAGS = {"--auth-scheme", "--extra-beta", "--metadata-user-id"}
+
+
+def env_default_args() -> list[str]:
+    """Default flags from PT_PROXY_ARGS (shell-split), so pt_run.sh and pt_selftest.py pick them up unchanged."""
+    words = shlex.split(os.environ.get("PT_PROXY_ARGS", ""))
+    for word in words:
+        if word.startswith("-") and word.split("=", 1)[0] not in ENV_ARG_FLAGS:
+            raise SystemExit(f"PT_PROXY_ARGS may only set {', '.join(sorted(ENV_ARG_FLAGS))}; pass {word.split('=', 1)[0]} on the command line instead")
+    if words and not words[0].startswith("-"):
+        raise SystemExit("PT_PROXY_ARGS must start with a flag")
+    return words
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--harness", required=True, help="name of the harness under test (used in the report)")
@@ -527,8 +548,11 @@ def main() -> None:
                     help="forward every path and method, not only Messages, count_tokens and models")
     ap.add_argument("--metadata-user-id", default=None,
                     help="add this metadata.user_id when the harness sends none (off by default)")
+    ap.add_argument("--auth-scheme", choices=["x-api-key", "bearer"], default="x-api-key",
+                    help="send the upstream credential as an x-api-key header (default) or as a bearer token, for a gateway that wants one")
+    ap.add_argument("--extra-beta", action="append", default=[], help="anthropic-beta value to add to every forwarded request (repeatable)")
     ap.add_argument("--timeout", type=int, default=900)
-    args = ap.parse_args()
+    args = ap.parse_args(env_default_args() + sys.argv[1:])
     os.environ.pop("PT_CONTROL_TOKEN", None)
     if args.bind not in ("127.0.0.1", "localhost") and not args.insecure_bind:
         raise SystemExit(f"refusing to bind {args.bind}: the proxy attaches a real API key to what it forwards. Use loopback, or pass --insecure-bind.")
@@ -544,6 +568,7 @@ def main() -> None:
         raise SystemExit(f"cannot listen on {args.bind}:{args.port} ({exc.strerror or exc}); stop the other pt_proxy or pass --port") from None
     server.daemon_threads = True
     print(f"[pt] {args.harness} mode={args.mode} model={args.force_model or '(harness)'} listening on http://{args.bind}:{args.port}\n"
+          f"[pt] upstream: {args.upstream}  auth: {args.auth}/{args.auth_scheme}  extra betas: {', '.join(args.extra_beta) or 'none'}\n"
           f"[pt] log: {state.log_path}\n"
           f"[pt] point the harness at it: ANTHROPIC_BASE_URL=http://{args.bind}:{args.port} ANTHROPIC_API_KEY=sk-ant-dummy",
           file=sys.stderr, flush=True)

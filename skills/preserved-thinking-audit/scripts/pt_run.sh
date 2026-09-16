@@ -53,6 +53,7 @@ MARK
 chmod 700 "$out/mark"; export PT_MARK="$out/mark"
 # A dummy key for anything that insists on one. Never the real key.
 export ANTHROPIC_API_KEY=sk-ant-dummy
+unset PT_PROXY_ARGS   # proxy defaults are the operator's business, not the harness's
 status=0
 if [[ $# -gt 0 ]]; then "$@" || status=$?; else "${SHELL:-bash}" || status=$?; fi
 kill $proxy_pid 2>/dev/null || true; wait $proxy_pid 2>/dev/null || true; trap - EXIT
