@@ -1,0 +1,30 @@
+{
+  "detected": 18,
+  "bad_cases": 18,
+  "clean": 4,
+  "valid_cases": 4,
+  "fixtures": 1,
+  "fixture_cases": 1,
+  "extra_flags": {
+    "sliding_window": [
+      "FID-1"
+    ],
+    "strip_thinking": [
+      "FID-2"
+    ],
+    "strip_thinking_volatile": [
+      "FID-1",
+      "FID-2"
+    ],
+    "middle_hole": [
+      "FID-1"
+    ],
+    "good_recovery": [
+      "LZY-1"
+    ],
+    "model_switch_strip": [
+      "FID-1",
+      "FID-2"
+    ]
+  }
+}

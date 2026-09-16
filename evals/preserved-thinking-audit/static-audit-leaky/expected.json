@@ -1,0 +1,56 @@
+{
+  "fixture": "leaky-harness",
+  "note": "Ground truth for the static pass. `must_flag` checks have a planted habit and must come back fail or latent. `must_not_flag` checks are clean in this harness and must not come back fail or latent. Checks in neither list are not scored.",
+  "must_flag": {
+    "CFG-1": "leaky/client.py: thinking {type: enabled, budget_tokens: 4000}",
+    "CFG-2": "leaky/client.py: temperature 0.2",
+    "FID-2": "leaky/history.py add_assistant: drops thinking blocks whose thinking text is empty",
+    "PFX-1": "leaky/prompt.py build_system_prompt: time, cwd, and git branch re-rendered on every request (called from agent.py run loop)",
+    "PFX-3": "leaky/history.py render: reminder text block injected into tool_result turns and stripped from earlier ones",
+    "PFX-5": "leaky/history.py compact_if_needed: keep-tail compaction keeps the last 6 messages verbatim, thinking included",
+    "PFX-7": "leaky/agent.py summarize: sends the raw history, thinking included, under a different system prompt and no tools",
+    "ERR-1": "leaky/client.py: retries the identical body three times on any HTTP error, including the signature 400"
+  },
+  "must_not_flag": {
+    "PFX-2": "leaky/tools.py: TOOLS is a module constant, never edited",
+    "PFX-4": "no sliding window: history is only ever compacted, never head-truncated",
+    "CFG-3": "tool_choice is never set",
+    "CFG-4": "messages never end with an assistant turn",
+    "MDL-1": "the model is fixed for the process; nothing strips thinking on a switch",
+    "PFX-8": "no URL-sourced media"
+  },
+  "wire": {
+    "note": "Expected result of driving the harness through pt_run.sh in drop_block mode against fake_api.py. The fake returns thinking blocks with empty text (the claude-fable-5-1 default), and this harness drops those, so no thinking is ever replayed: the right verdict is MASKED, with its prefix edits reported as latent, not as live failures.",
+    "verdict": "MASKED",
+    "must_be": {
+      "CFG-1": [
+        "fail"
+      ],
+      "CFG-2": [
+        "fail"
+      ],
+      "FID-1": [
+        "fail"
+      ],
+      "LZY-2": [
+        "fail"
+      ],
+      "PFX-1": [
+        "latent"
+      ],
+      "PFX-3": [
+        "latent"
+      ],
+      "FID-2": [
+        "fail"
+      ]
+    },
+    "must_not_flag": [
+      "PFX-2",
+      "PFX-4",
+      "CFG-3",
+      "CFG-4",
+      "FID-4"
+    ]
+  }
+}

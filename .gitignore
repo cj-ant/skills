@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+# eval run output
+evals/results/
+evals/**/results/
+# per-directory agent bookkeeping; this repo keeps no project .claude/ config
+.claude/
+.ruff_cache/
